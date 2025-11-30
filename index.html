@@ -124,14 +124,64 @@
             const totalMinutes = hours * 60;
             const targetPieces = Math.round(totalMinutes / timeMin);
             
-            // Si targetPieces es la meta de un día, el porcentaje se calcula con esa meta.
             const baseTarget = targetPieces > 0 ? targetPieces : 1; 
             const percentage = Math.min(100, (actualQty / baseTarget) * 100);
             
             return { targetPieces, percentage: parseFloat(percentage.toFixed(1)) };
         };
 
-        // --- COMPONENTES ---
+        // --- NUEVO COMPONENTE CONTROLADO PARA EL INPUT ---
+        const ProductionInput = ({ rowId, machineId, initialValue, canEdit, handleSaveData, isMobile }) => {
+            // El estado local maneja el valor mientras se escribe (Controlled Input)
+            const [value, setValue] = useState(initialValue);
+            
+            // Sincronizar el estado local con el valor de Firebase (initialValue) 
+            // Esto solo ocurre cuando el valor de Firebase (initialValue) cambia Y es diferente 
+            // del valor local actual (ej: después de que onSnapshot se dispare).
+            useEffect(() => {
+                if (initialValue !== value) {
+                    setValue(initialValue);
+                }
+            }, [initialValue]);
+
+            const handleBlur = (e) => {
+                const newValue = e.target.value;
+                // Solo guardar si el valor realmente cambió para evitar escrituras innecesarias
+                if (newValue !== initialValue.toString() && canEdit) {
+                    handleSaveData(rowId, machineId, 'actual', newValue);
+                }
+            };
+            
+            const handleChange = (e) => {
+                // Actualizar el estado local en cada tecleo
+                setValue(e.target.value);
+            }
+            
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') e.target.blur();
+            }
+            
+            const commonProps = {
+                type: "number", 
+                inputMode: "decimal",
+                placeholder: "0",
+                value: value, 
+                onChange: handleChange,
+                onBlur: handleBlur,
+                disabled: !canEdit,
+                onKeyDown: isMobile ? undefined : handleKeyDown,
+            };
+
+            const mobileClassName = `w-24 h-12 text-center text-xl font-bold rounded-md border border-slate-200 outline-none shadow-inner ${canEdit ? 'bg-white text-blue-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`;
+            const desktopClassName = `prod-input text-sm ${!canEdit ? 'bg-slate-100 cursor-not-allowed' : ''}`;
+
+            return (
+                <input 
+                    {...commonProps}
+                    className={isMobile ? mobileClassName : desktopClassName}
+                />
+            );
+        }
 
         const LoginScreen = ({ setAuthenticatedUser }) => {
             const [pin, setPin] = useState('');
@@ -162,7 +212,7 @@
 
         const PlanningModal = ({ machine, rowId, currentData, isContinuation, onClose, onSave }) => {
             const [model, setModel] = useState(currentData?.plan_model || '');
-            const [targetQty, setTargetQty] = useState(currentData?.originalTargetQty || currentData?.plan_target_qty || ''); // Usar originalTargetQty si existe
+            const [targetQty, setTargetQty] = useState(currentData?.originalTargetQty || currentData?.plan_target_qty || '');
             const [timeMin, setTimeMin] = useState(currentData?.plan_time_min || '');
             const [hours, setHours] = useState(currentData?.plan_hours || 12);
             const [link, setLink] = useState(currentData?.plan_link || '');
@@ -267,41 +317,84 @@
                 return () => unsubAuth();
             }, []);
             
-            // Función auxiliar para recalcular una cadena de días a partir de un punto (startIndex)
             const propagateConsumption = async (startIndex, machineId, currentOrderId) => {
                 let previousRemaining;
 
-                // 1. Calcular el remaining del día de inicio o del día anterior
-                const dayBeforeIndex = startIndex - 1;
-                if (dayBeforeIndex >= 0) {
-                     const dayBeforeRowId = ALL_ROWS[dayBeforeIndex].id;
-                     previousRemaining = data[dayBeforeRowId]?.[machineId]?.remainingQty || 0;
-                } else {
-                    // Si es el primer día de la tabla (y tiene orderId), usa el originalTargetQty
-                    const startDayData = data[ALL_ROWS[startIndex].id]?.[machineId] || {};
+                const startDayData = data[ALL_ROWS[startIndex].id]?.[machineId] || {};
+
+                if (startDayData.isStartDay) {
                     previousRemaining = startDayData.originalTargetQty || 0;
+                } else {
+                     const dayBeforeIndex = startIndex - 1;
+                     // Buscar el día anterior que sea parte de la misma orden
+                     let foundPrevious = false;
+                     for (let i = dayBeforeIndex; i >= 0; i--) {
+                        const dayBeforeRowId = ALL_ROWS[i].id;
+                        const dayBeforeData = data[dayBeforeRowId]?.[machineId] || {};
+                        if(dayBeforeData.orderId === currentOrderId) {
+                            previousRemaining = dayBeforeData.remainingQty || 0;
+                            foundPrevious = true;
+                            break;
+                        }
+                     }
+                     if (!foundPrevious) previousRemaining = 0;
                 }
                 
                 const currentDayData = data[ALL_ROWS[startIndex].id]?.[machineId] || {};
                 const currentActual = currentDayData.actual || 0;
                 let currentRemaining = previousRemaining - currentActual;
 
-                // Si estamos en el día de inicio, usamos su originalTargetQty
+                // Si es el día de inicio, el remaining siempre es Original - Actual
                 if (currentDayData.isStartDay) {
                     currentRemaining = (currentDayData.originalTargetQty || 0) - currentActual;
                 }
 
 
+                let totalConsumedBeforeCurrent = (currentDayData.originalTargetQty || 0) - (currentDayData.remainingQty || 0)
+                let runningTotal = (currentDayData.originalTargetQty || 0);
+
+                // Recalcular el runningTotal (total consumido hasta el día anterior)
+                for (let i = 0; i < startIndex; i++) {
+                     const rowId = ALL_ROWS[i].id;
+                     const mData = data[rowId]?.[machineId] || {};
+                     if (mData.orderId === currentOrderId) {
+                         runningTotal -= (mData.actual || 0);
+                     }
+                }
+                runningTotal -= (currentDayData.actual || 0);
+                currentRemaining = runningTotal;
+                
+                
                 // 2. Iterar y actualizar hacia adelante
                 for (let i = startIndex; i < ALL_ROWS.length; i++) {
                     const nextRowId = ALL_ROWS[i].id;
                     const nextDocRef = doc(db, 'produccion_2026', nextRowId);
                     const nextM = data[nextRowId]?.[machineId] || {};
                     
-                    // Solo actualizamos si es parte de la misma cadena de pedido y si quedan piezas
                     if (nextM.orderId !== currentOrderId) break;
-                    if (previousRemaining <= 0) {
-                        // Si ya se terminó, borrar el plan de los días siguientes
+
+                    const nextActual = nextM.actual || 0;
+                    
+                    let nextRemaining;
+
+                    if (i === startIndex) {
+                        // El día actual ya fue calculado arriba (currentRemaining)
+                        nextRemaining = currentRemaining;
+                    } else {
+                        // Para los días subsiguientes, el remaining es el remaining del día anterior menos el actual
+                        const prevRowId = ALL_ROWS[i - 1].id;
+                        const prevRemaining = data[prevRowId]?.[machineId]?.remainingQty || 0;
+                        
+                        nextRemaining = prevRemaining - nextActual;
+                        
+                        // Si el remaining del día anterior es negativo (ya se acabó)
+                        if (prevRemaining <= 0) {
+                             nextRemaining = 0;
+                        }
+                    }
+                    
+                    // Si el remaining llega a cero o menos, borramos el plan de este día y los siguientes
+                    if (nextRemaining <= 0 && i > startIndex) {
                          await setDoc(nextDocRef, { 
                             [machineId]: {
                                 ...nextM, 
@@ -313,44 +406,33 @@
                         continue;
                     }
 
-                    const nextActual = nextM.actual || 0;
-                    const nextRemaining = previousRemaining - nextActual;
-                    
+
                     // Preparamos la actualización para el documento actual (i)
-                    const updateData = {};
-                    // Si es el día de inicio, ya se actualizó arriba, si no, lo actualizamos aquí.
-                    if (i === startIndex && !currentDayData.isStartDay) {
-                        updateData.remainingQty = currentRemaining;
-                    } else if (i > startIndex) {
-                        updateData.remainingQty = nextRemaining;
-                    } else if(i === startIndex && currentDayData.isStartDay) {
-                         updateData.remainingQty = currentRemaining;
-                    }
+                    const updateData = {
+                         remainingQty: nextRemaining
+                    };
 
-                    if (Object.keys(updateData).length > 0) {
-                         await setDoc(nextDocRef, { 
-                            [machineId]: {
-                                ...nextM, 
-                                ...updateData
-                            }
-                        }, { merge: true });
-                    }
+                    await setDoc(nextDocRef, { 
+                        [machineId]: {
+                            ...nextM, 
+                            ...updateData
+                        }
+                    }, { merge: true });
 
-                    previousRemaining = nextRemaining;
+                    currentRemaining = nextRemaining; // Continuar la cadena
                 }
             };
             
-            // --- FUNCIÓN DE GUARDADO DE PRODUCCIÓN (CORREGIDA) ---
+            // --- FUNCIÓN DE GUARDADO DE PRODUCCIÓN ---
             const handleSaveData = async (rowId, machineId, field, value) => {
                 const numericValue = Number(value) > 0 ? Number(value) : null;
                 const currentMachineData = data[rowId]?.[machineId] || {};
                 const updatedMachine = { ...currentMachineData };
                 updatedMachine[field] = numericValue;
                 
-                // Recalcular métricas
                 if (field === 'actual') {
                     const plan = {
-                        tgt: updatedMachine.calculated_target || 0, // Usar meta calculada del día
+                        tgt: updatedMachine.calculated_target || 0,
                         min: updatedMachine.plan_time_min || 0,
                         hrs: updatedMachine.plan_hours || 0,
                         act: updatedMachine.actual || 0 
@@ -359,27 +441,23 @@
                     updatedMachine.percentage = res.percentage;
                 }
                 
-                // 1. Guardar el objeto del día actual
                 const docRef = doc(db, 'produccion_2026', rowId);
                 await setDoc(docRef, { [machineId]: updatedMachine }, { merge: true });
 
-                // 2. Si es parte de un pedido, propagar el consumo (restando)
                 if (updatedMachine.orderId && field === 'actual') {
                     const startIndex = ALL_ROWS.findIndex(r => r.id === rowId);
                     await propagateConsumption(startIndex, machineId, updatedMachine.orderId);
                 }
             };
             
-            // --- FUNCIÓN DE GUARDADO DE PLAN (CORREGIDA Y CON PROPAGACIÓN) ---
+            // --- FUNCIÓN DE GUARDADO DE PLAN ---
             const handleSavePlan = async (rowId, machineId, planData) => {
                 const currentM = data[rowId]?.[machineId] || {};
                 const actualQty = currentM.actual || 0;
                 
-                // 1. Calcular target diario y porcentaje
                 const res = calculateProduction(planData.plan_target_qty, planData.plan_time_min, planData.plan_hours, actualQty);
 
-                // 2. Definir Order ID y datos del Día de Inicio
-                const orderId = `${rowId}-${machineId}`;
+                const orderId = `${rowId}-${machineId}-${Date.now()}`; // ID único para la nueva cadena
                 const originalTargetQty = planData.plan_target_qty;
                 const remainingQty = originalTargetQty - actualQty;
                 
@@ -387,20 +465,18 @@
                     ...currentM,
                     ...planData, 
                     actual: actualQty,
-                    calculated_target: res.targetPieces, // Meta diaria
+                    calculated_target: res.targetPieces,
                     percentage: res.percentage,
                     orderId: orderId, 
                     isStartDay: true, 
                     isContinuation: false, 
                     originalTargetQty: originalTargetQty, 
                     remainingQty: remainingQty, 
-                    isBreakDay: false // Asegurarse de que no esté roto
+                    isBreakDay: false 
                 };
                 
-                // 3. Guardar el Día de Inicio
                 await setDoc(doc(db, 'produccion_2026', rowId), { [machineId]: startDayUpdate }, { merge: true });
 
-                // 4. Propagar a días subsiguientes
                 const startIndex = ALL_ROWS.findIndex(r => r.id === rowId);
                 let previousRemaining = remainingQty;
 
@@ -419,19 +495,16 @@
                     const continuationUpdate = {
                         [machineId]: {
                             ...nextM, 
-                            // Propagar Plan
                             plan_model: planData.plan_model,
                             plan_time_min: planData.plan_time_min,
                             plan_hours: planData.plan_hours,
                             plan_link: planData.plan_link,
-                            // Información de Orden
                             orderId: orderId, 
                             isStartDay: false, 
                             isContinuation: true,
                             isBreakDay: false,
-                            originalTargetQty: undefined, // Solo en el día de inicio
-                            plan_target_qty: undefined,   // Solo en el día de inicio
-                            // Metas y Producción
+                            originalTargetQty: undefined, 
+                            plan_target_qty: undefined,   
                             actual: nextActual,
                             calculated_target: nextRes.targetPieces,
                             percentage: nextRes.percentage,
@@ -457,21 +530,17 @@
                     
                     if (!orderId) return;
 
-                    // Iterar desde el día actual hasta el final del año, borrando la cadena
                     for (let i = startIndex; i < ALL_ROWS.length; i++) {
                         const nextRowId = ALL_ROWS[i].id;
                         const nextDocRef = doc(db, 'produccion_2026', nextRowId);
                         const nextM = data[nextRowId]?.[machineId] || {};
 
-                        // Romper si ya no es parte de la cadena
                         if (nextM.orderId !== orderId) break; 
                         
-                        // Guardar la producción actual antes de borrar el plan
                         const actualQty = nextM.actual || null;
                         
                         const resetUpdate = {
                             [machineId]: {
-                                // Dejar solo la producción real y limpiar todo el plan
                                 actual: actualQty, 
                                 plan_model: null, plan_target_qty: null, plan_time_min: null, plan_hours: null, plan_link: null,
                                 calculated_target: null, percentage: null, 
@@ -552,11 +621,12 @@
                                 const mData = dayData[m.id] || {};
                                 const pct = mData.percentage || 0;
                                 const target = mData.calculated_target || 0;
-                                const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual : '';
                                 
-                                // Nueva Lógica de Pedidos
+                                // Valor de Firebase (se convierte a string para el componente Input)
+                                const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual.toString() : '';
+                                
                                 const isStartDay = mData.isStartDay;
-                                const isContinuation = mData.isContinuation && mData.remainingQty > 0;
+                                const isContinuation = mData.isContinuation && (mData.remainingQty > 0 || mData.actual > 0);
                                 const isOrderDay = isStartDay || isContinuation;
                                 const displayTarget = isContinuation ? mData.remainingQty : mData.originalTargetQty || target;
                                 
@@ -586,7 +656,7 @@
                                                 <div className="flex flex-col items-end">
                                                     {isContinuation ? (
                                                         <span className={`text-xs font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700`}>
-                                                            Restan: {displayTarget.toLocaleString()}
+                                                            Restan: {Math.max(0, mData.remainingQty).toLocaleString()}
                                                         </span>
                                                     ) : (
                                                         <span className={`text-xs font-black px-2 py-0.5 rounded-full ${pct>=100?'bg-green-100 text-green-700': pct>70?'bg-blue-100 text-blue-700':'bg-red-100 text-red-700'}`}>
@@ -605,7 +675,7 @@
                                         <div className="grid grid-cols-[1fr_auto] gap-3 items-center bg-slate-50 rounded-lg p-1 border border-slate-100">
                                             
                                             {/* Info Modelo y Controles */}
-                                            <div className="px-2" onClick={() => canEdit && setPlanModal({ machineId: m.id, rowId })}>
+                                            <div className="px-2" onClick={() => canEdit && setPlanModal({ machineId: m.id, rowId, isContinuation: isContinuation && mData.remainingQty > 0 })}>
                                                 {hasPlan ? (
                                                     <div className="flex flex-col">
                                                         <div className="flex items-center gap-1">
@@ -614,7 +684,7 @@
                                                             {mData.plan_link && <a href={mData.plan_link} target="_blank" className="text-blue-400 hover:text-blue-600"><i data-lucide="link" className="w-3 h-3"></i></a>}
                                                             {isStartDay && <span className="text-[10px] text-green-500 font-bold">INICIO</span>}
                                                         </div>
-                                                        {isContinuation && canEdit && (
+                                                        {isContinuation && mData.remainingQty > 0 && canEdit && (
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleBreakOrder(rowId, m.id, mData.remainingQty); }}
                                                                 className="text-[10px] mt-1 text-red-600 font-bold bg-red-100 py-0.5 px-1 rounded hover:bg-red-200 w-fit"
@@ -628,15 +698,14 @@
                                                 )}
                                             </div>
 
-                                            {/* Input Gigante */}
-                                            <input 
-                                                type="number" 
-                                                inputMode="decimal"
-                                                defaultValue={actual}
-                                                placeholder="0"
-                                                disabled={!canEdit}
-                                                className={`w-24 h-12 text-center text-xl font-bold rounded-md border border-slate-200 outline-none shadow-inner ${canEdit ? 'bg-white text-blue-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
-                                                onBlur={(e) => handleSaveData(rowId, m.id, 'actual', e.target.value)}
+                                            {/* Input Gigante (Usa el nuevo componente) */}
+                                            <ProductionInput
+                                                rowId={rowId}
+                                                machineId={m.id}
+                                                initialValue={actual}
+                                                canEdit={canEdit}
+                                                handleSaveData={handleSaveData}
+                                                isMobile={true}
                                             />
                                         </div>
                                     </div>
@@ -654,7 +723,7 @@
                 );
             };
 
-            // --- VISTA DESKTOP (Tabla Clásica - Mismo concepto de órdenes) ---
+            // --- VISTA DESKTOP (Tabla Clásica) ---
             const DesktopView = () => {
                 const canEdit = user.role === ROLES.ADMIN;
                 return (
@@ -702,13 +771,12 @@
                                                         </td>
                                                         {MACHINES.map(m => {
                                                             const mData = rowData[m.id] || {};
-                                                            const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual : '';
+                                                            // Valor de Firebase (se convierte a string para el componente Input)
+                                                            const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual.toString() : '';
                                                             const pct = mData.percentage || 0;
                                                             
-                                                            // Lógica de Pedidos para Escritorio
                                                             const isStartDay = mData.isStartDay;
-                                                            const isContinuation = mData.isContinuation && mData.remainingQty > 0;
-                                                            const isOrderDay = isStartDay || isContinuation;
+                                                            const isContinuation = mData.isContinuation && (mData.remainingQty > 0 || mData.actual > 0);
 
                                                             return (
                                                                 <td key={m.id} className="p-0 border-r relative h-[60px]">
@@ -717,7 +785,7 @@
                                                                             <div className="bg-slate-50 text-[9px] flex justify-between px-1 py-0.5">
                                                                                 <span className="font-bold text-slate-500">{mData.plan_model}</span>
                                                                                 {isContinuation ? (
-                                                                                    <span className="text-indigo-600 font-bold">Restan: {mData.remainingQty.toLocaleString()}</span>
+                                                                                    <span className="text-indigo-600 font-bold">Restan: {Math.max(0, mData.remainingQty).toLocaleString()}</span>
                                                                                 ) : (
                                                                                     <span className={`${pct>=100?'text-green-600':pct<50?'text-red-500':'text-orange-500'} font-bold`}>{pct}%</span>
                                                                                 )}
@@ -726,8 +794,8 @@
                                                                         
                                                                         {/* Botones de control de plan y orden */}
                                                                         {canEdit && (
-                                                                            <div className="absolute top-0 right-0 p-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
-                                                                                <button onClick={() => setPlanModal({machineId: m.id, rowId, isContinuation})} className="text-blue-500 hover:text-blue-700" title={isContinuation ? "Ir al día de inicio para editar el pedido" : "Editar Plan"}>
+                                                                            <div className="absolute top-0 right-0 p-1 flex gap-1 opacity-0 hover:opacity-100 transition-opacity z-10">
+                                                                                <button onClick={() => setPlanModal({machineId: m.id, rowId, isContinuation: isContinuation && mData.remainingQty > 0})} className="text-blue-500 hover:text-blue-700" title={isContinuation ? "Ir al día de inicio para editar el pedido" : "Editar Plan"}>
                                                                                     <i data-lucide="edit-2" className="w-3 h-3"></i>
                                                                                 </button>
                                                                                 {isContinuation && mData.remainingQty > 0 && (
@@ -738,13 +806,14 @@
                                                                             </div>
                                                                         )}
                                                                         
-                                                                        <input 
-                                                                            type="number" 
-                                                                            className="prod-input text-sm" 
-                                                                            defaultValue={actual}
-                                                                            disabled={!canEdit}
-                                                                            onBlur={(e) => handleSaveData(rowId, m.id, 'actual', e.target.value)}
-                                                                            onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                                                                        {/* Input de Producción (Usa el nuevo componente) */}
+                                                                        <ProductionInput
+                                                                            rowId={rowId}
+                                                                            machineId={m.id}
+                                                                            initialValue={actual}
+                                                                            canEdit={canEdit}
+                                                                            handleSaveData={handleSaveData}
+                                                                            isMobile={false}
                                                                         />
                                                                     </div>
                                                                 </td>
@@ -776,7 +845,6 @@
                         onSave={handleSavePlan} 
                     />}
                     
-                    {/* Renderiza MobileView en pantallas pequeñas y DesktopView en grandes */}
                     <div className="block md:hidden h-full"><MobileView /></div>
                     <div className="hidden md:block h-full"><DesktopView /></div>
                 </div>
