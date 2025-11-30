@@ -3,19 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de ProducciÃ³n - Cirineo 2025</title>
+    <title>Control de Producción - Cirineo 2025</title>
     
-    <!-- React y ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     
-    <!-- Babel para procesar JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
@@ -27,9 +23,9 @@
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         
-        /* DefiniciÃ³n de anchos para la cabecera responsiva */
+        /* Definición de anchos para la cabecera responsiva */
         .machine-col {
-            min-width: 100px; /* Ancho por defecto (contraÃ­do) */
+            min-width: 100px; /* Ancho por defecto (contraído) */
             width: 100px;
         }
         .machine-col.expanded {
@@ -48,10 +44,10 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { getFirestore, collection, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-        const { useState, useEffect, useMemo, useCallback } = React;
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
         // ==========================================
-        // CONFIGURACIÃN E INICIALIZACIÃN DE FIREBASE
+        // CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyBqHgV4vDat1-VmZfKbiPg7nuiX-ROcexw",
@@ -71,10 +67,10 @@
         // ROLES Y USUARIOS
         // ==========================================
         const ROLES = {
-            ADMIN: 'admin', // Marco: PlanificaciÃ³n, Lectura/Escritura total
+            ADMIN: 'admin', // Marco: Planificación, Lectura/Escritura total
             COMMENTATOR: 'commentator', // Prisciliano: Lectura total, Comentarios R/W
             OBSERVER: 'observer', // Susana: Lectura solo semana actual
-            OPERATOR: 'operator', // Operadores: Solo Escritura en producciÃ³n real
+            OPERATOR: 'operator', // Operadores: Solo Escritura en producción real
             GUEST: 'guest',
         };
 
@@ -86,7 +82,7 @@
         };
         
         // ==========================================
-        // DATOS DE MÃQUINAS Y FILAS
+        // DATOS DE MÁQUINAS Y FILAS
         // ==========================================
         const MACHINES = [
             { id: 'm35', name: 'MAQ 35', type: 'SANTONI SM8 TOP 2V', diam: 16, needles: 1440, gauge: 28 },
@@ -116,43 +112,19 @@
             'JUEVES 20', 'VIERNES 21'
         ];
 
-        // Definimos la "Semana Actual" para el observador (simplificaciÃ³n)
-        const CURRENT_WEEK_DATES = INITIAL_ROWS.slice(0, 5); // MIERCOLES 12 a MARTES 18
+        // Definimos la "Semana Actual" para el observador
+        const CURRENT_WEEK_DATES = INITIAL_ROWS.slice(0, 5); 
 
         // ==========================================
-        // CÃLCULO DE PRODUCCIÃN (FUNCIÃN CENTRAL)
+        // CÁLCULO DE PRODUCCIÓN
         // ==========================================
-
-        /**
-         * Calcula el objetivo de piezas y el porcentaje de cumplimiento.
-         * @param {number} targetQty - Cantidad total a tejer del modelo (e.g., 2500).
-         * @param {number} timeMin - Tiempo por pieza en minutos (e.g., 6).
-         * @param {number} hours - Horas planeadas de trabajo (e.g., 12 o 24).
-         * @param {number} actualQty - ProducciÃ³n real (e.g., 500).
-         * @returns {object} { targetPieces, percentage }
-         */
         const calculateProduction = (targetQty, timeMin, hours, actualQty) => {
             if (!targetQty || !timeMin || !hours || targetQty <= 0 || timeMin <= 0 || hours <= 0) {
                 return { targetPieces: 0, percentage: 0 };
             }
-            
-            // 1. Horas a Minutos
             const totalMinutes = hours * 60;
-            
-            // 2. ProducciÃ³n mÃ¡xima de la mÃ¡quina en esas horas
-            // targetQty: 2500 (total a producir)
-            // timeMin: 6 min/pieza
-            // totalMinutes: 1440 min (24h)
-            
-            // ProducciÃ³n total posible en las horas planeadas
             const piecesPossible = totalMinutes / timeMin;
-            
-            // El objetivo diario es el MÃNIMO entre lo que la mÃ¡quina PUEDE producir y lo que QUEDA del pedido.
-            // Para el cÃ¡lculo simple, usaremos el total de piezas / (dÃ­as restantes * horas planeadas / 24)
-            // Ya que no tenemos el contexto de "dÃ­as restantes", usaremos la fÃ³rmula de piezas posibles por dÃ­a planeado.
-            const targetPieces = Math.round(piecesPossible); // Objetivo diario basado en el tiempo.
-
-            // Porcentaje de cumplimiento
+            const targetPieces = Math.round(piecesPossible);
             const percentage = targetPieces > 0 
                 ? Math.min(100, (actualQty / targetPieces) * 100) 
                 : 0;
@@ -175,11 +147,10 @@
                     </div>
                 );
             }
-
             return (
                 <img 
                     src={imageUrl} 
-                    alt="Icono de MÃ¡quina Santoni" 
+                    alt="Icono" 
                     className={className + " object-contain"}
                     onError={() => setHasError(true)}
                 />
@@ -196,29 +167,21 @@
                         onClick={() => onClick(machine.id)}
                         className={`w-full h-full flex flex-col items-center gap-1 p-2 transition-colors duration-200 ${isExpanded ? 'bg-blue-50 hover:bg-blue-100' : 'bg-slate-50 hover:bg-slate-100'} focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md`}
                     >
-                        {/* 1. Icono */}
                         <div className="w-8 h-8 md:w-10 md:h-10 transform group-hover:scale-110 transition-transform duration-300">
                             <MachineIconImage className="w-full h-full text-slate-700" />
                         </div>
-                        
-                        {/* 2. Nombre de MÃ¡quina */}
                         <span className="font-bold text-blue-700 text-sm whitespace-nowrap">
                             {machine.name.replace('MAQ ', '')}
                         </span>
-                        
-                        {/* 3. Detalles (Solo visibles si estÃ¡ expandido) */}
                         <div className={`text-[10px] text-slate-500 font-normal leading-tight text-center overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-24 opacity-100 pt-1' : 'max-h-0 opacity-0'}`}>
                             {machine.type.replace('SANTONI', '')}<br/>
                             {machine.diam}" - {machine.needles}ag<br/>
                             G{machine.gauge}
                             <i data-lucide="chevrons-up" className="w-3 h-3 text-red-400 mt-1"></i>
                         </div>
-                        
-                        {/* 4. Indicador de ExpansiÃ³n/ContracciÃ³n (flecha) */}
                         {!isExpanded && (
                              <i data-lucide="chevrons-down" className="w-3 h-3 text-green-400 mt-1"></i>
                         )}
-                        
                     </button>
                 </th>
             );
@@ -235,10 +198,9 @@
 
                 if (user) {
                     setAuthenticatedUser(user);
-                    // Limpiar PIN despuÃ©s de un login exitoso (seguridad)
                     setPin(''); 
                 } else {
-                    setError('PIN incorrecto. IntÃ©ntalo de nuevo.');
+                    setError('PIN incorrecto. Inténtalo de nuevo.');
                 }
             };
 
@@ -249,7 +211,7 @@
                             <div className="bg-blue-600 p-3 rounded-xl text-white mb-3 shadow-lg">
                                 <i data-lucide="lock" className="w-8 h-8"></i>
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-800">Acceso Cirineo ProducciÃ³n</h2>
+                            <h2 className="text-2xl font-bold text-slate-800">Acceso Cirineo Producción</h2>
                             <p className="text-sm text-slate-500">Introduce tu PIN de seguridad</p>
                         </div>
                         <form onSubmit={handleLogin} className="space-y-4">
@@ -275,19 +237,17 @@
                                 Ingresar
                             </button>
                         </form>
-                        <div className="mt-6 pt-4 border-t text-xs text-slate-400 text-center">
-                            
-                        </div>
                     </div>
                 </div>
             );
         };
 
+        // --- MODAL DE PLANIFICACIÓN (PARA ADMIN) ---
         const PlanningModal = ({ machine, rowId, currentData, onClose, onSave }) => {
             const [model, setModel] = useState(currentData?.plan_model || '');
             const [targetQty, setTargetQty] = useState(currentData?.plan_target_qty || '');
             const [timeMin, setTimeMin] = useState(currentData?.plan_time_min || '');
-            const [hours, setHours] = useState(currentData?.plan_hours || 12); // Default 12h
+            const [hours, setHours] = useState(currentData?.plan_hours || 12); 
 
             const handleSave = () => {
                 const data = {
@@ -301,96 +261,107 @@
             };
 
             const { targetPieces, percentage } = calculateProduction(
-                Number(targetQty), 
-                Number(timeMin), 
-                Number(hours), 
-                currentData?.actual || 0
+                Number(targetQty), Number(timeMin), Number(hours), currentData?.actual || 0
             );
 
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-                    <div 
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all duration-300 scale-100"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-5 border-b flex justify-between items-center bg-blue-600 text-white">
-                            <h3 className="text-xl font-bold">PlanificaciÃ³n: {machine.name} - {rowId}</h3>
-                            <button onClick={onClose} className="p-1 rounded-full hover:bg-blue-700 transition"><i data-lucide="x" className="w-5 h-5"></i></button>
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b flex justify-between items-center bg-blue-600 text-white">
+                            <h3 className="text-lg font-bold flex items-center gap-2"><i data-lucide="clipboard-list" className="w-5 h-5"></i> Planificación: {machine.name}</h3>
+                            <button onClick={onClose} className="p-1 hover:bg-blue-700 rounded-full"><i data-lucide="x" className="w-6 h-6"></i></button>
                         </div>
                         <div className="p-5 space-y-4">
-                            
+                            <div className="bg-blue-50 p-2 rounded text-center text-sm font-bold text-blue-800 mb-2">
+                                {rowId}
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <label className="block">
-                                    <span className="text-sm font-medium text-slate-700">Modelo (Ej: B001 M)</span>
-                                    <input
-                                        type="text"
-                                        value={model}
-                                        onChange={(e) => setModel(e.target.value)}
-                                        className="mt-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                    />
+                                    <span className="text-xs font-bold text-slate-500 uppercase">Modelo</span>
+                                    <input type="text" value={model} onChange={(e) => setModel(e.target.value)} className="mt-1 w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: B001" />
                                 </label>
                                 <label className="block">
-                                    <span className="text-sm font-medium text-slate-700">Cantidad Total Pedido</span>
-                                    <input
-                                        type="number"
-                                        value={targetQty}
-                                        onChange={(e) => setTargetQty(e.target.value)}
-                                        className="mt-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                    />
+                                    <span className="text-xs font-bold text-slate-500 uppercase">Total Pedido</span>
+                                    <input type="number" value={targetQty} onChange={(e) => setTargetQty(e.target.value)} className="mt-1 w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                                 </label>
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
                                 <label className="block">
-                                    <span className="text-sm font-medium text-slate-700">Tiempo por pieza (min)</span>
-                                    <input
-                                        type="number"
-                                        value={timeMin}
-                                        onChange={(e) => setTimeMin(e.target.value)}
-                                        className="mt-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                    />
+                                    <span className="text-xs font-bold text-slate-500 uppercase">Tiempo/Pza (min)</span>
+                                    <input type="number" value={timeMin} onChange={(e) => setTimeMin(e.target.value)} className="mt-1 w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                                 </label>
                                 <label className="block">
-                                    <span className="text-sm font-medium text-slate-700">Horas de trabajo (12/24)</span>
-                                    <select
-                                        value={hours}
-                                        onChange={(e) => setHours(e.target.value)}
-                                        className="mt-1 w-full p-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                                    >
+                                    <span className="text-xs font-bold text-slate-500 uppercase">Horas Turno</span>
+                                    <select value={hours} onChange={(e) => setHours(e.target.value)} className="mt-1 w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                                         <option value={12}>12 horas</option>
                                         <option value={24}>24 horas</option>
                                     </select>
                                 </label>
                             </div>
-                            
-                            <div className="border-t pt-4 mt-4 space-y-2">
-                                <p className="font-bold text-slate-800">CÃ¡lculos Diarios:</p>
-                                <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
-                                    <span className="font-medium text-slate-600">Objetivo de Piezas (DÃ­a)</span>
-                                    <span className="font-black text-green-700 text-lg">{targetPieces.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between p-3 bg-slate-50 rounded-lg">
-                                    <span className="font-medium text-slate-600">ProducciÃ³n Actual</span>
-                                    <span className="font-black text-blue-700 text-lg">{currentData?.actual?.toLocaleString() || 0}</span>
-                                </div>
-                                <div className="flex justify-between p-3 bg-slate-200 rounded-lg">
-                                    <span className="font-bold text-slate-800">Cumplimiento (%)</span>
-                                    <span 
-                                        className={`font-black text-xl ${percentage >= 100 ? 'text-green-600' : percentage > 70 ? 'text-orange-500' : 'text-red-500'}`}
-                                    >
-                                        {percentage}%
-                                    </span>
+                            <div className="bg-slate-100 p-3 rounded-lg mt-2">
+                                <p className="text-xs font-bold text-slate-500 mb-2">Simulación:</p>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm">Objetivo Diario:</span>
+                                    <span className="font-bold text-green-700">{targetPieces.toLocaleString()} pzas</span>
                                 </div>
                             </div>
                         </div>
                         <div className="p-4 bg-slate-50 flex justify-end">
-                            <button
-                                onClick={handleSave}
-                                className="bg-green-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-700 transition shadow-md"
-                            >
-                                Guardar PlanificaciÃ³n
-                            </button>
+                            <button onClick={handleSave} className="bg-green-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-green-700 shadow-lg">Guardar Plan</button>
                         </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- NUEVA MODAL DE REGISTRO DE PRODUCCIÓN (PARA OPERADOR/ADMIN) ---
+        const ProductionInputModal = ({ machine, rowId, currentValue, onClose, onSave }) => {
+            const [val, setVal] = useState(currentValue === 0 ? '' : currentValue);
+            const inputRef = useRef(null);
+
+            useEffect(() => {
+                if(inputRef.current) inputRef.current.focus();
+            }, []);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave(rowId, machine.id, 'actual', Number(val));
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100" onClick={e => e.stopPropagation()}>
+                        <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
+                            <h3 className="text-lg font-bold">Registrar Producción</h3>
+                            <button onClick={onClose}><i data-lucide="x" className="w-6 h-6"></i></button>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-6">
+                            <div className="text-center">
+                                <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider">{rowId}</p>
+                                <h2 className="text-3xl font-black text-blue-700 mt-1">{machine.name}</h2>
+                            </div>
+
+                            <div className="relative">
+                                <input 
+                                    ref={inputRef}
+                                    type="number" 
+                                    value={val}
+                                    onChange={(e) => setVal(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full text-center text-5xl font-black text-slate-800 border-b-4 border-blue-500 focus:border-blue-700 outline-none py-4 bg-transparent"
+                                />
+                                <span className="block text-center text-slate-400 text-sm mt-2 font-medium">Piezas Fabricadas</span>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                className="w-full bg-blue-600 text-white py-4 rounded-xl text-xl font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-xl shadow-blue-200"
+                            >
+                                Guardar
+                            </button>
+                        </form>
                     </div>
                 </div>
             );
@@ -401,40 +372,34 @@
         // ==========================================
 
         const App = () => {
-            const [firebaseUser, setFirebaseUser] = useState(null); // Usuario de Firebase
-            const [authenticatedUser, setAuthenticatedUser] = useState(null); // Usuario con rol y PIN
+            const [firebaseUser, setFirebaseUser] = useState(null);
+            const [authenticatedUser, setAuthenticatedUser] = useState(null);
             const [productionData, setProductionData] = useState({});
             const [loading, setLoading] = useState(true);
             const [savingStatus, setSavingStatus] = useState('idle');
             const [expandedMachineId, setExpandedMachineId] = useState(null);
+            
+            // Modales
             const [planningModal, setPlanningModal] = useState(null); // {machineId, rowId}
+            const [productionModal, setProductionModal] = useState(null); // {machineId, rowId, currentVal}
 
-            // Toggle para expandir/contraer la columna
             const toggleExpansion = (machineId) => {
                 setExpandedMachineId(currentId => currentId === machineId ? null : machineId);
             };
 
-            // Cargar Iconos Lucide
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
             });
 
-            // AutenticaciÃ³n AnÃ³nima (Necesaria para Firestore, pero el PIN controla el acceso a la UI)
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, setFirebaseUser);
-                signInAnonymously(auth).catch((error) => {
-                    console.error("Error Auth:", error);
-                });
+                signInAnonymously(auth).catch((error) => console.error("Error Auth:", error));
                 return () => unsubscribe();
             }, []);
 
-            // Escuchar Datos en Tiempo Real
             useEffect(() => {
                 if (!firebaseUser) return;
-
-                // Usaremos una colecciÃ³n genÃ©rica para la data anidada
                 const q = collection(db, 'produccion_2025');
-                
                 const unsubscribe = onSnapshot(q, (snapshot) => {
                     const data = {};
                     snapshot.forEach((doc) => {
@@ -446,17 +411,9 @@
                     console.error("Error obteniendo datos:", error);
                     setLoading(false);
                 });
-
                 return () => unsubscribe();
             }, [firebaseUser]);
 
-            /**
-             * Guarda los cambios de producciÃ³n real o planificaciÃ³n.
-             * @param {string} rowId - Fecha (ej: 'LUNES 17')
-             * @param {string} machineId - ID de mÃ¡quina (ej: 'm30')
-             * @param {string} field - Campo a actualizar ('actual', 'plan_model', etc.)
-             * @param {any} value - Nuevo valor
-             */
             const handleUpdateField = useCallback(async (rowId, machineId, field, value) => {
                 if (!authenticatedUser || authenticatedUser.role === ROLES.OBSERVER) return;
 
@@ -464,11 +421,8 @@
                 try {
                     const docRef = doc(db, 'produccion_2025', rowId);
                     
-                    let updateData = {
-                        [`${machineId}.${field}`]: value
-                    };
+                    let updateData = { [`${machineId}.${field}`]: value };
 
-                    // Si es un cambio de planificaciÃ³n, recalcula y actualiza los campos calculados
                     if (field.startsWith('plan_') || field === 'actual') {
                         const currentMachineData = productionData[rowId]?.[machineId] || {};
                         const plan_target_qty = field === 'plan_target_qty' ? value : currentMachineData.plan_target_qty;
@@ -494,33 +448,24 @@
                 }
             }, [authenticatedUser, productionData]);
 
-            /**
-             * Maneja el guardado desde el modal de planificaciÃ³n.
-             * @param {string} rowId - Fecha
-             * @param {string} machineId - ID de mÃ¡quina
-             * @param {object} planningData - Objeto con los nuevos campos de planificaciÃ³n
-             */
             const handleSavePlanning = useCallback(async (rowId, machineId, planningData) => {
                 if (authenticatedUser.role !== ROLES.ADMIN) return;
 
                 setSavingStatus('saving');
                 try {
                     const docRef = doc(db, 'produccion_2025', rowId);
-                    
-                    let updateData = {};
                     const currentMachineData = productionData[rowId]?.[machineId] || {};
                     const actualQty = currentMachineData.actual || 0;
-                    
-                    // Aplicar la nueva data
                     const mergedData = { ...currentMachineData, ...planningData };
 
                     const { targetPieces, percentage } = calculateProduction(
                         mergedData.plan_target_qty, mergedData.plan_time_min, mergedData.plan_hours, actualQty
                     );
                     
+                    const updateData = {};
                     updateData[machineId] = {
                         ...mergedData,
-                        actual: actualQty, // Asegurar que el actual se mantenga
+                        actual: actualQty,
                         calculated_target: targetPieces,
                         percentage: percentage,
                     };
@@ -530,7 +475,7 @@
                     setTimeout(() => setSavingStatus('idle'), 2000);
 
                 } catch (err) {
-                    console.error("Error guardando planificaciÃ³n:", err);
+                    console.error("Error planificando:", err);
                     setSavingStatus('error');
                 }
             }, [authenticatedUser, productionData]);
@@ -545,19 +490,16 @@
                     <div className="flex items-center justify-center h-screen bg-slate-50 text-slate-600">
                         <div className="flex flex-col items-center gap-4">
                             <i data-lucide="loader-2" className="w-10 h-10 animate-spin text-blue-600"></i>
-                            <p>Cargando datos de producciÃ³n...</p>
+                            <p>Cargando datos...</p>
                         </div>
                     </div>
                 );
             }
             
-            // FILTRADO DE FILAS PARA OBSERVADOR
             const visibleRows = authenticatedUser.role === ROLES.OBSERVER 
                 ? INITIAL_ROWS.filter(row => CURRENT_WEEK_DATES.includes(row)) 
                 : INITIAL_ROWS;
 
-
-            // FunciÃ³n de ayuda para la visualizaciÃ³n del porcentaje
             const getPercentageColor = (percentage) => {
                 if (percentage >= 100) return 'bg-green-100 text-green-700';
                 if (percentage > 70) return 'bg-orange-100 text-orange-700';
@@ -567,7 +509,7 @@
 
             return (
                 <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-                    {/* MODAL DE PLANIFICACIÃN */}
+                    {/* MODALES */}
                     {planningModal && (
                         <PlanningModal 
                             machine={MACHINES.find(m => m.id === planningModal.machineId)}
@@ -575,6 +517,16 @@
                             currentData={productionData[planningModal.rowId]?.[planningModal.machineId]}
                             onClose={() => setPlanningModal(null)}
                             onSave={handleSavePlanning}
+                        />
+                    )}
+
+                    {productionModal && (
+                        <ProductionInputModal
+                            machine={MACHINES.find(m => m.id === productionModal.machineId)}
+                            rowId={productionModal.rowId}
+                            currentValue={productionModal.currentVal}
+                            onClose={() => setProductionModal(null)}
+                            onSave={handleUpdateField}
                         />
                     )}
 
@@ -586,31 +538,30 @@
                                     <i data-lucide="factory" className="w-6 h-6"></i>
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-bold text-slate-800">Control de ProducciÃ³n - Cirineo 2025</h1>
+                                    <h1 className="text-xl font-bold text-slate-800 hidden md:block">Control de Producción - Cirineo 2025</h1>
+                                    <h1 className="text-lg font-bold text-slate-800 md:hidden">Producción 2025</h1>
                                     <p className="text-xs text-slate-500 flex items-center gap-1">
                                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                                        Logueado como: <span className="font-semibold text-slate-700">{authenticatedUser.name} ({authenticatedUser.role.toUpperCase()})</span>
+                                        <span className="font-semibold text-slate-700">{authenticatedUser.name}</span>
                                     </p>
                                 </div>
                             </div>
                             
                             <div className="flex items-center gap-4">
-                                {savingStatus === 'saving' && <span className="text-xs text-blue-500 font-medium">Guardando...</span>}
+                                {savingStatus === 'saving' && <span className="text-xs text-blue-500 font-medium animate-pulse">Guardando...</span>}
                                 {savingStatus === 'saved' && <span className="text-xs text-green-600 font-medium">Guardado</span>}
-                                {savingStatus === 'error' && <span className="text-xs text-red-600 font-medium">Error</span>}
                                 <button 
                                     onClick={() => setAuthenticatedUser(null)} 
-                                    className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-medium hover:bg-red-600 transition"
+                                    className="bg-red-100 text-red-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-200 transition"
                                 >
-                                    <i data-lucide="log-out" className="w-3 h-3 inline mr-1"></i>
-                                    Salir
+                                    <i data-lucide="log-out" className="w-4 h-4"></i>
                                 </button>
                             </div>
                         </div>
                     </header>
 
                     {/* MAIN TABLE */}
-                    <main className="flex-1 overflow-auto p-4">
+                    <main className="flex-1 overflow-auto p-2 md:p-4">
                         <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
                             <div className="overflow-x-auto custom-scrollbar pb-2">
                                 <table className="w-full border-collapse"> 
@@ -619,7 +570,7 @@
                                             <th className="sticky left-0 z-10 bg-slate-50 p-4 min-w-[150px] border-r border-slate-200 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                 <div className="flex flex-col gap-1">
                                                     <span className="font-bold text-slate-700">FECHA</span>
-                                                    <span className="text-xs text-slate-400 font-normal">PRODUCCIÃN</span>
+                                                    <span className="text-xs text-slate-400 font-normal">PRODUCCIÓN</span>
                                                 </div>
                                             </th>
                                             {MACHINES.map(machine => (
@@ -641,7 +592,7 @@
                                             const isReadOnly = authenticatedUser.role === ROLES.OBSERVER;
 
                                             return (
-                                                <tr key={rowLabel} className={`border-b border-slate-100 transition-colors ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} ${isReadOnly ? 'opacity-80' : 'hover:bg-blue-50/50'}`}>
+                                                <tr key={rowLabel} className={`border-b border-slate-100 transition-colors ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} ${isReadOnly ? 'opacity-80' : 'hover:bg-blue-50/30'}`}>
                                                     <td className="sticky left-0 z-10 bg-inherit p-3 border-r border-slate-200 font-medium text-slate-700 text-sm whitespace-nowrap shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                                         <div className="flex items-center gap-2">
                                                             <i data-lucide="calendar" className="w-3 h-3 text-slate-400"></i>
@@ -650,18 +601,16 @@
                                                     </td>
                                                     {MACHINES.map(machine => {
                                                         const machineData = productionData[rowLabel]?.[machine.id] || {};
-                                                        const actualQty = machineData.actual ?? '';
-                                                        const targetPieces = machineData.calculated_target ?? 0;
-                                                        const percentage = machineData.percentage ?? 0;
+                                                        const actualQty = machineData.actual || 0;
+                                                        const targetPieces = machineData.calculated_target || 0;
+                                                        const percentage = machineData.percentage || 0;
                                                         
                                                         rowTotal += Number(actualQty) || 0;
 
                                                         const isExpanded = expandedMachineId === machine.id;
                                                         const canEditActual = [ROLES.ADMIN, ROLES.OPERATOR].includes(authenticatedUser.role) && !isReadOnly;
                                                         const canPlan = authenticatedUser.role === ROLES.ADMIN && !isReadOnly;
-                                                        
                                                         const showPlanningInfo = isExpanded || authenticatedUser.role !== ROLES.OPERATOR;
-
 
                                                         return (
                                                             <td 
@@ -675,18 +624,21 @@
                                                                         <div className={`p-1 text-center text-[10px] leading-tight transition-all ${isExpanded ? 'opacity-100' : 'opacity-0 h-0 p-0'} ${canPlan ? 'bg-blue-50/50' : 'bg-slate-50'}`}>
                                                                             {canPlan && (
                                                                                 <button 
-                                                                                    onClick={() => setPlanningModal({ machineId: machine.id, rowId: rowLabel })}
-                                                                                    className="text-blue-600 hover:text-blue-800 font-bold mb-1 px-1 rounded-sm text-xs transition"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setPlanningModal({ machineId: machine.id, rowId: rowLabel });
+                                                                                    }}
+                                                                                    className="text-blue-600 hover:text-blue-800 font-bold mb-1 px-1 rounded-sm text-xs transition border border-blue-200 bg-white shadow-sm"
                                                                                 >
                                                                                     {machineData.plan_model || 'PLANIFICAR'} 
                                                                                     <i data-lucide="edit-3" className="w-3 h-3 inline ml-1"></i>
                                                                                 </button>
                                                                             )}
                                                                             <p className={`font-semibold ${machineData.plan_model ? 'text-slate-800' : 'text-slate-400'}`}>
-                                                                                Mod: {machineData.plan_model || '-'} / T: {machineData.plan_time_min || '-'} min
+                                                                                Mod: {machineData.plan_model || '-'}
                                                                             </p>
-                                                                            <p className="font-medium text-slate-600">
-                                                                                Obj: {targetPieces.toLocaleString()} Pz
+                                                                            <p className="font-medium text-slate-500">
+                                                                                Obj: {targetPieces}
                                                                             </p>
                                                                             <div className={`mt-1 text-xs font-black p-[1px] rounded ${getPercentageColor(percentage)}`}>
                                                                                 {percentage}%
@@ -694,15 +646,20 @@
                                                                         </div>
                                                                     )}
 
-                                                                    {/* Input de ProducciÃ³n Real (Operador/Admin) */}
-                                                                    <input
-                                                                        type="number"
-                                                                        placeholder={isReadOnly ? '0' : 'Ingresar Pzas'}
-                                                                        className={`w-full py-2 text-center text-slate-800 font-bold placeholder-slate-400 transition-all ${canEditActual ? 'bg-white hover:bg-yellow-50 focus:ring-blue-500 focus:border-blue-500 focus:ring-2' : 'bg-slate-100 cursor-default'}`}
-                                                                        value={actualQty}
-                                                                        onChange={(e) => canEditActual && handleUpdateField(rowLabel, machine.id, 'actual', Number(e.target.value) || 0)}
+                                                                    {/* CELDA DE PRODUCCIÓN - AHORA ES UN BOTÓN QUE ABRE MODAL */}
+                                                                    <button
+                                                                        onClick={() => canEditActual && setProductionModal({ machineId: machine.id, rowId: rowLabel, currentVal: actualQty })}
                                                                         disabled={!canEditActual}
-                                                                    />
+                                                                        className={`w-full h-12 flex items-center justify-center font-bold text-lg transition-all
+                                                                            ${canEditActual 
+                                                                                ? 'hover:bg-blue-100 text-slate-800 cursor-pointer active:bg-blue-200' 
+                                                                                : 'bg-slate-50 text-slate-500 cursor-default'}
+                                                                            ${actualQty > 0 ? 'text-blue-900' : 'text-slate-300'}
+                                                                        `}
+                                                                    >
+                                                                        {actualQty > 0 ? actualQty : (canEditActual ? <span className="opacity-20">-</span> : '')}
+                                                                    </button>
+
                                                                 </div>
                                                             </td>
                                                         );
@@ -722,7 +679,6 @@
                                             {MACHINES.map(machine => {
                                                 const isExpanded = expandedMachineId === machine.id;
                                                 
-                                                // Calcular total solo para las filas visibles
                                                 let colTotal = 0;
                                                 visibleRows.forEach(rowLabel => {
                                                     colTotal += productionData[rowLabel]?.[machine.id]?.actual || 0;
@@ -738,7 +694,6 @@
                                                 );
                                             })}
                                             <td className="sticky right-0 z-10 bg-slate-200 p-3 text-center font-black text-blue-800 border-l border-slate-300 text-lg shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                                {/* Calcular total general solo para las filas visibles */}
                                                 {visibleRows.reduce((acc, rowLabel) => {
                                                     return acc + MACHINES.reduce((sum, machine) => sum + (productionData[rowLabel]?.[machine.id]?.actual || 0), 0);
                                                 }, 0).toLocaleString()}
@@ -758,4 +713,3 @@
     </script>
 </body>
 </html>
-
