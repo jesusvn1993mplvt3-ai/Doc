@@ -130,30 +130,31 @@
             return { targetPieces, percentage: parseFloat(percentage.toFixed(1)) };
         };
 
-        // --- NUEVO COMPONENTE CONTROLADO PARA EL INPUT ---
+        // --- CORRECCIÓN: COMPONENTE INPUT MEJORADO ---
+        // Se añade control de foco (isFocused) para evitar que Firebase sobrescriba mientras escribes
         const ProductionInput = ({ rowId, machineId, initialValue, canEdit, handleSaveData, isMobile }) => {
-            // El estado local maneja el valor mientras se escribe (Controlled Input)
             const [value, setValue] = useState(initialValue);
+            const [isFocused, setIsFocused] = useState(false); // Nuevo estado para detectar foco
             
-            // Sincronizar el estado local con el valor de Firebase (initialValue) 
-            // Esto solo ocurre cuando el valor de Firebase (initialValue) cambia Y es diferente 
-            // del valor local actual (ej: después de que onSnapshot se dispare).
+            // Sincronizar SOLO si el usuario no tiene el foco en la casilla
             useEffect(() => {
-                if (initialValue !== value) {
+                if (!isFocused) {
                     setValue(initialValue);
                 }
-            }, [initialValue]);
+            }, [initialValue, isFocused]);
+
+            const handleFocus = () => setIsFocused(true);
 
             const handleBlur = (e) => {
+                setIsFocused(false);
                 const newValue = e.target.value;
-                // Solo guardar si el valor realmente cambió para evitar escrituras innecesarias
+                // Guardar si el valor cambió
                 if (newValue !== initialValue.toString() && canEdit) {
                     handleSaveData(rowId, machineId, 'actual', newValue);
                 }
             };
             
             const handleChange = (e) => {
-                // Actualizar el estado local en cada tecleo
                 setValue(e.target.value);
             }
             
@@ -164,10 +165,11 @@
             const commonProps = {
                 type: "number", 
                 inputMode: "decimal",
-                placeholder: "0",
+                placeholder: "-",
                 value: value, 
                 onChange: handleChange,
-                onBlur: handleBlur,
+                onFocus: handleFocus, // Detectar entrada
+                onBlur: handleBlur,   // Detectar salida
                 disabled: !canEdit,
                 onKeyDown: isMobile ? undefined : handleKeyDown,
             };
@@ -423,9 +425,15 @@
                 }
             };
             
-            // --- FUNCIÓN DE GUARDADO DE PRODUCCIÓN ---
+            // --- FUNCIÓN DE GUARDADO DE PRODUCCIÓN CORREGIDA ---
+            // Se modificó para permitir guardar el valor "0" y no convertirlo a null
             const handleSaveData = async (rowId, machineId, field, value) => {
-                const numericValue = Number(value) > 0 ? Number(value) : null;
+                let numericValue = null;
+                // Si el valor no es un string vacío, lo convertimos a número (incluyendo 0)
+                if (value !== '' && value !== null && value !== undefined) {
+                    numericValue = Number(value);
+                }
+
                 const currentMachineData = data[rowId]?.[machineId] || {};
                 const updatedMachine = { ...currentMachineData };
                 updatedMachine[field] = numericValue;
@@ -623,7 +631,8 @@
                                 const target = mData.calculated_target || 0;
                                 
                                 // Valor de Firebase (se convierte a string para el componente Input)
-                                const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual.toString() : '';
+                                // CORRECCIÓN: Manejar undefined/null como cadena vacía
+                                const actual = (mData.actual !== undefined && mData.actual !== null) ? mData.actual.toString() : '';
                                 
                                 const isStartDay = mData.isStartDay;
                                 const isContinuation = mData.isContinuation && (mData.remainingQty > 0 || mData.actual > 0);
@@ -698,7 +707,7 @@
                                                 )}
                                             </div>
 
-                                            {/* Input Gigante (Usa el nuevo componente) */}
+                                            {/* Input Gigante */}
                                             <ProductionInput
                                                 rowId={rowId}
                                                 machineId={m.id}
@@ -772,7 +781,7 @@
                                                         {MACHINES.map(m => {
                                                             const mData = rowData[m.id] || {};
                                                             // Valor de Firebase (se convierte a string para el componente Input)
-                                                            const actual = mData.actual !== undefined && mData.actual !== null ? mData.actual.toString() : '';
+                                                            const actual = (mData.actual !== undefined && mData.actual !== null) ? mData.actual.toString() : '';
                                                             const pct = mData.percentage || 0;
                                                             
                                                             const isStartDay = mData.isStartDay;
@@ -806,7 +815,7 @@
                                                                             </div>
                                                                         )}
                                                                         
-                                                                        {/* Input de Producción (Usa el nuevo componente) */}
+                                                                        {/* Input de Producción */}
                                                                         <ProductionInput
                                                                             rowId={rowId}
                                                                             machineId={m.id}
