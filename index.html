@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Producción Textil v2.0</title>
-    <!-- Carga de Tailwind CSS para el estilo -->
+    <title>Sistema de Producción Textil v2.0 (Firebase)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Carga de React y Babel para manejar la lógica del componente -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Biblioteca de iconos -->
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         /* Estilos específicos para impresión */
@@ -28,7 +29,27 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useCallback } = React;
+        
+        // --- 2. CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBqHgV4vDat1-VmZfKbiPg7nuiX-ROcexw",
+            authDomain: "cirineo-cec21.firebaseapp.com",
+            projectId: "cirineo-cec21",
+            storageBucket: "cirineo-cec21.firebasestorage.app",
+            messagingSenderId: "620210618284",
+            appId: "1:620210618284:web:482bab9bf74650fff18409",
+            measurementId: "G-B7YLM78RVW"
+        };
+        
+        // Inicializar Firebase (solo si no está ya inicializado)
+        let db;
+        try {
+            const app = firebase.initializeApp(firebaseConfig);
+            db = app.firestore();
+        } catch(e) {
+            console.error("Error al inicializar Firebase. Revise la configuración:", e);
+        }
 
         // --- Utilidades ---
         /**
@@ -79,6 +100,18 @@
         const SettingsModal = ({ config, onSave, onClose }) => {
             const [localConfig, setLocalConfig] = useState(config);
 
+            const handleSave = async () => {
+                try {
+                    // La configuración siempre se guarda bajo el mismo ID 'GLOBAL_CONFIG'
+                    const configRef = db.collection('config').doc('GLOBAL_CONFIG');
+                    await configRef.set(localConfig);
+                    onSave(localConfig);
+                } catch (error) {
+                    console.error("Error guardando configuración en Firebase:", error);
+                    alert("Error al guardar la configuración.");
+                }
+            };
+
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-2xl">
@@ -106,7 +139,7 @@
                         </div>
                         <div className="flex justify-end gap-2">
                             <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancelar</button>
-                            <button onClick={() => onSave(localConfig)} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Guardar</button>
+                            <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Guardar</button>
                         </div>
                     </div>
                 </div>
@@ -127,7 +160,9 @@
             const [pieces, setPieces] = useState([
                 { id: 1, codigo: '', pieza: 'Blusa', talla: 'Unitalla', peso: '', tiempo: '', totalPedido: '', materiales: [{material: '', consumo: ''}] }
             ]);
-
+            
+            // ... (Lógica de añadir/quitar piezas y materiales es la misma, omitida por brevedad) ...
+            
             const addPiece = () => {
                 setPieces([...pieces, { 
                     id: Date.now(), 
@@ -164,44 +199,80 @@
             const removePiece = (id) => {
                 if(pieces.length > 1) setPieces(pieces.filter(p => p.id !== id));
             };
+            
+            const [isSaving, setIsSaving] = useState(false);
 
-            const handleSubmit = () => {
+            const handleSubmit = async () => {
                 if(!header.cliente || !header.maquina) return alert("Falta Cliente o Máquina");
+                
+                setIsSaving(true);
+                const ordersCollection = db.collection('orders');
+                const batch = db.batch();
+                let currentSequence = config.sequenceCounter;
 
-                // Generar órdenes individuales
-                const newOrders = pieces.map((p, index) => {
-                    const uniqueID = generateID(header.cliente, config.sequenceCounter, p.pieza);
+                try {
+                    // Generar y agregar órdenes al batch
+                    const newOrdersList = [];
+                    pieces.forEach((p) => {
+                        const uniqueID = generateID(header.cliente, currentSequence, p.pieza);
+                        
+                        const newOrder = {
+                            // Eliminamos el 'id' interno de React, Firestore generará su propio ID
+                            displayId: uniqueID, 
+                            baseSequence: currentSequence, 
+                            cliente: header.cliente,
+                            maquina: header.maquina,
+                            fechaInicio: header.fechaInicio,
+                            fechaFin: header.fechaEntrega,
+                            codigo: p.codigo,
+                            pieza: p.pieza,
+                            talla: p.talla,
+                            peso: p.peso,
+                            tiempo: p.tiempo,
+                            totalPedido: p.totalPedido,
+                            materiales: p.materiales.filter(m => m.material), 
+                            enhebrado: '',
+                            progreso: [],
+                            status: 'En Proceso',
+                            imageManual: null,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        };
+                        
+                        const docRef = ordersCollection.doc();
+                        batch.set(docRef, newOrder);
+                        
+                        // Necesitamos el ID temporal de React y el displayId para actualizar la lista en la UI
+                        newOrdersList.push({ ...newOrder, id: docRef.id }); 
+
+                        // Incrementa el contador para la siguiente pieza
+                        currentSequence++; 
+                    });
+
+                    // 3. Actualizar el contador global en la configuración
+                    const newSequenceCounter = currentSequence;
+                    const configRef = db.collection('config').doc('GLOBAL_CONFIG');
+                    batch.update(configRef, { sequenceCounter: newSequenceCounter });
+
+                    // Ejecutar todas las operaciones
+                    await batch.commit();
+
+                    onSave(newOrdersList, newSequenceCounter); // Notificar a MainApp
                     
-                    return {
-                        id: Date.now() + index, // ID interno para React
-                        displayId: uniqueID, // ID visual para el usuario (O-00001-bl)
-                        baseSequence: config.sequenceCounter, // Para referencia
-                        cliente: header.cliente,
-                        maquina: header.maquina,
-                        fechaInicio: header.fechaInicio,
-                        fechaFin: header.fechaEntrega,
-                        codigo: p.codigo,
-                        pieza: p.pieza,
-                        talla: p.talla,
-                        peso: p.peso,
-                        tiempo: p.tiempo,
-                        totalPedido: p.totalPedido,
-                        materiales: p.materiales.filter(m => m.material), // Filtra materiales vacíos
-                        enhebrado: '', // Campo de notas
-                        progreso: [],
-                        status: 'En Proceso',
-                        imageManual: null 
-                    };
-                });
-
-                onSave(newOrders);
+                } catch (error) {
+                    console.error("Error al guardar el lote en Firebase:", error);
+                    alert("Hubo un error al generar y guardar las órdenes.");
+                } finally {
+                    setIsSaving(false);
+                }
             };
+            
+            // ... (El JSX es el mismo, pero se actualiza el botón de guardar) ...
 
             return (
                 <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-lg my-6 overflow-hidden">
                     <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
                         <h2 className="text-xl font-bold">Crear Nuevo Lote de Producción</h2>
-                        <button onClick={onCancel} className="text-indigo-200 hover:text-white">Cancelar</button>
+                        <button onClick={onCancel} disabled={isSaving} className="text-indigo-200 hover:text-white">Cancelar</button>
                     </div>
                     
                     <div className="p-6">
@@ -209,6 +280,7 @@
                         <div className="bg-indigo-50 p-4 rounded-lg mb-6 border border-indigo-100">
                             <h3 className="text-sm font-bold text-indigo-800 uppercase mb-3">Datos Generales (Aplica a todas las piezas) - ID Lote: {generateID(header.cliente, config.sequenceCounter, "")}</h3>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                {/* ... (Inputs de cabecera) ... */}
                                 <div>
                                     <label className="block text-xs font-bold text-indigo-600 mb-1">Cliente</label>
                                     <input value={header.cliente} onChange={e => setHeader({...header, cliente: e.target.value})} className="w-full p-2 border rounded" placeholder="Ej: Optima" />
@@ -296,11 +368,11 @@
                         </div>
 
                         <div className="mt-6 flex flex-col md:flex-row justify-between gap-4">
-                            <button onClick={addPiece} className="border-2 border-dashed border-indigo-300 text-indigo-600 px-4 py-3 rounded-lg w-full md:w-auto hover:bg-indigo-50 font-bold transition">
+                            <button onClick={addPiece} className="border-2 border-dashed border-indigo-300 text-indigo-600 px-4 py-3 rounded-lg w-full md:w-auto hover:bg-indigo-50 font-bold transition" disabled={isSaving}>
                                 <Icon name="plus" size={16} className="inline mr-1" /> Agregar Otra Pieza (Mismo Lote)
                             </button>
-                            <button onClick={handleSubmit} className="bg-indigo-600 text-white px-8 py-3 rounded-lg shadow-lg hover:bg-indigo-700 font-bold flex items-center justify-center gap-2 transition">
-                                <Icon name="save" /> Generar Órdenes
+                            <button onClick={handleSubmit} className="bg-indigo-600 text-white px-8 py-3 rounded-lg shadow-lg hover:bg-indigo-700 font-bold flex items-center justify-center gap-2 transition" disabled={isSaving}>
+                                <Icon name="save" /> {isSaving ? 'Guardando...' : 'Generar Órdenes'}
                             </button>
                         </div>
                     </div>
@@ -312,30 +384,71 @@
         const OrderView = ({ order, config, onBack, onUpdateStatus, onUpdateProgress, onUpdateNotes }) => {
             const [entry, setEntry] = useState({ fecha: new Date().toISOString().split('T')[0], tejedor: '', produccion: '', defectos: '' });
             const [notes, setNotes] = useState(order.enhebrado || '');
+            const [isUpdating, setIsUpdating] = useState(false);
             
             // Determinar imagen (Manual > GitHub > Placeholder)
             const imageUrl = order.imageManual || getGithubImageUrl(config.repoUrl, order.codigo);
 
-            const addProgress = () => {
+            const addProgress = async () => {
                 if(!entry.produccion || !entry.tejedor) return alert("Por favor, ingrese Producción y Tejedor.");
                 
-                const newProgress = [...(order.progreso || []), { 
+                setIsUpdating(true);
+                const newProgressEntry = { 
                     ...entry, 
-                    produccion: Number(entry.produccion), // Asegura que sea número
-                    id: Date.now() 
-                }];
-                onUpdateProgress(order.id, newProgress);
-                // Limpiar solo los campos de producción y defectos para el siguiente registro
-                setEntry({ ...entry, produccion: '', defectos: '' });
+                    produccion: Number(entry.produccion),
+                    id: Date.now(),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp() // Para ordenar en la DB
+                };
+                
+                const newProgress = [...(order.progreso || []), newProgressEntry];
+                
+                try {
+                    const orderRef = db.collection('orders').doc(order.id);
+                    await orderRef.update({ progreso: newProgress });
+
+                    onUpdateProgress(order.id, newProgress);
+                    setEntry({ ...entry, produccion: '', defectos: '' });
+                } catch (error) {
+                    console.error("Error al añadir progreso en Firebase:", error);
+                    alert("Error al guardar el progreso.");
+                } finally {
+                    setIsUpdating(false);
+                }
             };
 
-            const handleNotesChange = () => {
-                 onUpdateNotes(order.id, notes);
+            const handleNotesChange = async () => {
+                setIsUpdating(true);
+                try {
+                    const orderRef = db.collection('orders').doc(order.id);
+                    await orderRef.update({ enhebrado: notes });
+                    
+                    onUpdateNotes(order.id, notes);
+                } catch (error) {
+                    console.error("Error al guardar notas en Firebase:", error);
+                    alert("Error al guardar las notas.");
+                } finally {
+                    setIsUpdating(false);
+                }
             };
             
             const totalProd = order.progreso?.reduce((acc, curr) => acc + Number(curr.produccion), 0) || 0;
             const porcentaje = order.totalPedido ? Math.min(100, ((totalProd / Number(order.totalPedido)) * 100)).toFixed(1) : 0;
             const remaining = order.totalPedido ? Number(order.totalPedido) - totalProd : 'N/A';
+            
+            const handleUpdateStatusClick = async (status) => {
+                setIsUpdating(true);
+                try {
+                    const orderRef = db.collection('orders').doc(order.id);
+                    await orderRef.update({ status: status });
+                    onUpdateStatus(order.id, status);
+                } catch (error) {
+                    console.error("Error al cambiar estado en Firebase:", error);
+                    alert("Error al cambiar el estado de la orden.");
+                } finally {
+                    setIsUpdating(false);
+                }
+            };
+
 
             return (
                 <div className="max-w-5xl mx-auto my-4 bg-white shadow-xl min-h-screen">
@@ -343,7 +456,7 @@
                         <button onClick={onBack} className="text-slate-600 flex items-center gap-2 font-bold hover:text-indigo-600 transition"><Icon name="arrowLeft" /> Lista de Órdenes</button>
                         <div className="flex gap-2">
                             {order.status !== 'Archivado' ? (
-                                <button onClick={() => onUpdateStatus(order.id, 'Archivado')} className="bg-amber-500 text-white px-3 py-2 rounded flex items-center gap-2 hover:bg-amber-600 transition">
+                                <button onClick={() => handleUpdateStatusClick('Archivado')} disabled={isUpdating} className="bg-amber-500 text-white px-3 py-2 rounded flex items-center gap-2 hover:bg-amber-600 transition">
                                     <Icon name="archive" size={16} /> Archivar Orden
                                 </button>
                             ) : (
@@ -356,7 +469,8 @@
                     </div>
 
                     <div className="p-8 print:p-4">
-                        {/* Encabezado Impresión / Digital */}
+                        {/* ... (Todo el contenido de detalle, tablas, materiales, imagen, etc., es el mismo) ... */}
+                         {/* Encabezado Impresión / Digital */}
                         <div className="flex justify-between items-start border-b-4 border-indigo-600 pb-4 mb-6">
                             <div>
                                 <h1 className="text-4xl font-black text-slate-800 tracking-tight">{order.cliente}</h1>
@@ -455,7 +569,7 @@
                                 onBlur={handleNotesChange}
                                 placeholder="Escribe aquí cualquier ajuste crítico, número de agujas, o notas importantes para el tejedor."
                             ></textarea>
-                            <p className="text-xs text-right text-slate-500">Haz clic afuera para guardar la nota.</p>
+                            <p className="text-xs text-right text-slate-500">{isUpdating ? 'Guardando...' : 'Haz clic afuera para guardar la nota.'}</p>
                         </div>
                         
                         {/* Área de Notas de Impresión */}
@@ -516,7 +630,9 @@
                                      <label className="text-xs text-slate-500 block">Observaciones / Defectos</label>
                                     <input type="text" placeholder="Obs." className="p-2 border rounded w-full" value={entry.defectos} onChange={e=>setEntry({...entry, defectos: e.target.value})} />
                                 </div>
-                                <button onClick={addProgress} className="bg-green-600 text-white p-2 h-10 w-full sm:w-auto rounded hover:bg-green-700 transition"><Icon name="plus" /></button>
+                                <button onClick={addProgress} className="bg-green-600 text-white p-2 h-10 w-full sm:w-auto rounded hover:bg-green-700 transition" disabled={isUpdating}>
+                                    <Icon name="plus" />
+                                </button>
                             </div>
 
                             <div className="max-h-96 overflow-y-auto mt-4">
@@ -552,69 +668,89 @@
             );
         };
 
-        // --- Componente Principal de la Aplicación ---
+        // --- Componente Principal de la Aplicación (Modificado para usar Firebase) ---
         const MainApp = () => {
-            const [view, setView] = useState('list'); // list, create, detail
+            const [view, setView] = useState('list');
             const [orders, setOrders] = useState([]);
             const [selectedOrder, setSelectedOrder] = useState(null);
             const [filterClient, setFilterClient] = useState('ALL');
             const [showArchived, setShowArchived] = useState(false);
             const [showSettings, setShowSettings] = useState(false);
+            const [loading, setLoading] = useState(true);
             
             // Configuración Global
             const [config, setConfig] = useState({
-                repoUrl: 'https://placehold.co/150x150/e0e0e0/000?text=SIN+IMAGEN', // URL base de GitHub (placeholder por defecto)
-                sequenceCounter: 1 // Consecutivo global
+                repoUrl: 'https://placehold.co/150x150/e0e0e0/000?text=SIN+IMAGEN',
+                sequenceCounter: 1
             });
 
-            // Cargar datos (similar a un useEffect de inicialización)
-            useEffect(() => {
+            // --- CARGA INICIAL DE DATOS DESDE FIREBASE ---
+            const fetchInitialData = useCallback(async () => {
+                if (!db) return;
+
+                setLoading(true);
                 try {
-                    const savedOrders = localStorage.getItem('v2_produccion_orders');
-                    const savedConfig = localStorage.getItem('v2_produccion_config');
-                    if (savedOrders) setOrders(JSON.parse(savedOrders));
-                    if (savedConfig) {
-                        const parsedConfig = JSON.parse(savedConfig);
-                        // Aplicar valores por defecto si no existen en config guardada
+                    // 1. Cargar Configuración
+                    const configDoc = await db.collection('config').doc('GLOBAL_CONFIG').get();
+                    if (configDoc.exists) {
+                        const data = configDoc.data();
                         setConfig({
-                            repoUrl: parsedConfig.repoUrl || '',
-                            sequenceCounter: parsedConfig.sequenceCounter || 1
+                            repoUrl: data.repoUrl || 'https://placehold.co/150x150/e0e0e0/000?text=SIN+IMAGEN',
+                            sequenceCounter: data.sequenceCounter || 1
                         });
+                    } else {
+                        // Si no existe, crear un documento de configuración inicial
+                        await db.collection('config').doc('GLOBAL_CONFIG').set(config);
                     }
+
+                    // 2. Cargar Órdenes
+                    const ordersSnapshot = await db.collection('orders').get();
+                    const fetchedOrders = ordersSnapshot.docs.map(doc => ({
+                        id: doc.id, // Usamos el ID de Firestore como ID interno
+                        ...doc.data()
+                    }));
+                    setOrders(fetchedOrders);
+                    
                 } catch (e) {
-                    console.error("Error cargando localStorage:", e);
+                    console.error("Error cargando datos de Firebase:", e);
+                    alert("No se pudieron cargar los datos iniciales. Revise la consola.");
+                } finally {
+                    setLoading(false);
                 }
-            }, []);
+            }, []); // Dependencias vacías para que solo se ejecute al montar
 
-            // Guardar datos (se ejecuta cada vez que cambian orders o config)
             useEffect(() => {
-                localStorage.setItem('v2_produccion_orders', JSON.stringify(orders));
-                localStorage.setItem('v2_produccion_config', JSON.stringify(config));
-            }, [orders, config]);
+                fetchInitialData();
+            }, [fetchInitialData]);
 
-            const handleSaveNewOrders = (newOrdersList) => {
+
+            // --- MANEJADORES DE ACTUALIZACIÓN DE ESTADO ---
+
+            const handleSaveNewOrders = (newOrdersList, newSequenceCounter) => {
                 setOrders(prev => [...newOrdersList, ...prev]);
-                // Incrementar contador global solo una vez por lote
-                setConfig(prev => ({...prev, sequenceCounter: prev.sequenceCounter + 1}));
+                // La secuencia ya fue actualizada en la base de datos por MultiOrderForm
+                setConfig(prev => ({...prev, sequenceCounter: newSequenceCounter}));
                 setView('list');
             };
+            
+            // Note: handleUpdateProgress, handleUpdateNotes y handleUpdateStatus
+            // SOLO actualizan el estado local (para reflejar el cambio inmediato en la UI)
+            // La lógica de guardado en Firebase se movió DENTRO de OrderView.
 
             const handleUpdateProgress = (orderId, newProgress) => {
                 setOrders(prev => prev.map(o => o.id === orderId ? { ...o, progreso: newProgress } : o));
-                // Actualizar la vista de detalle si es la orden seleccionada
                 setSelectedOrder(prev => prev && prev.id === orderId ? { ...prev, progreso: newProgress } : prev);
             };
 
             const handleUpdateNotes = (orderId, newNotes) => {
                 setOrders(prev => prev.map(o => o.id === orderId ? { ...o, enhebrado: newNotes } : o));
-                // Actualizar la vista de detalle si es la orden seleccionada
                 setSelectedOrder(prev => prev && prev.id === orderId ? { ...prev, enhebrado: newNotes } : prev);
             };
 
             const handleUpdateStatus = (orderId, status) => {
                 const updated = orders.map(o => o.id === orderId ? { ...o, status } : o);
                 setOrders(updated);
-                // Si archivamos, volvemos a la lista
+                
                 if (status === 'Archivado') {
                     setView('list');
                     setSelectedOrder(null);
@@ -627,11 +763,28 @@
             const clients = useMemo(() => [...new Set(orders.map(o => o.cliente))], [orders]);
 
             // Filtrado de órdenes
-            const filteredOrders = orders.filter(o => {
+            const filteredOrders = useMemo(() => orders.filter(o => {
                 const matchClient = filterClient === 'ALL' || o.cliente === filterClient;
                 const matchStatus = showArchived ? o.status === 'Archivado' : o.status !== 'Archivado';
                 return matchClient && matchStatus;
-            });
+            }).sort((a, b) => {
+                // Ordenar por ID para mantener la lista estable
+                if (a.displayId < b.displayId) return -1;
+                if (a.displayId > b.displayId) return 1;
+                return 0;
+            }), [orders, filterClient, showArchived]);
+            
+            // Vista de Carga
+            if (loading) {
+                 return (
+                    <div className="min-h-screen flex items-center justify-center bg-slate-100">
+                        <div className="text-center p-8 bg-white rounded-lg shadow-xl">
+                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                             <p className="text-lg font-bold text-indigo-700">Cargando datos de Firebase...</p>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className="min-h-screen bg-slate-100 font-sans text-slate-800">
@@ -643,7 +796,7 @@
                                     <Icon name="folder" className="text-white" />
                                 </div>
                                 <div>
-                                    <h1 className="font-bold text-lg leading-tight">Control Textil</h1>
+                                    <h1 className="font-bold text-lg leading-tight">Control Textil (FB)</h1>
                                     <p className="text-xs text-slate-400">Gestión de Producción v2.0</p>
                                 </div>
                             </div>
