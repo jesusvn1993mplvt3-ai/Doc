@@ -294,6 +294,19 @@
             }, []);
 
             useEffect(() => lucide.createIcons(), [items]);
+
+            // =============================================================
+            // LÓGICA AGREGADA: CÁLCULO DE LISTA ÚNICA DE PROVEEDORES
+            // =============================================================
+            const supplierOptions = useMemo(() => {
+                const suppliers = new Set();
+                items.forEach(item => {
+                    if (item.proveedor && item.proveedor.trim() !== '') {
+                        suppliers.add(item.proveedor.toUpperCase().trim());
+                    }
+                });
+                return Array.from(suppliers).sort();
+            }, [items]);
             
             const toggleGroup = (groupName) => {
                 setCollapsedGroups(prev => ({
@@ -326,18 +339,15 @@
 
 
             const handleSave = async () => {
-                // MODIFICADO: Stock ya no es obligatorio, solo el material.
                 if (!newItem.material) return alert("El nombre del material es obligatorio");
                 
                 let updatedList;
-                
-                // Si el stock está vacío o es null, se establece en 0.
                 const stockValue = newItem.stock === '' || newItem.stock === null ? 0 : parseFloat(newItem.stock);
 
                 const payload = {
                     ...newItem,
                     id: isEditing ? newItem.id : Date.now(),
-                    stock: stockValue.toFixed(2), // Asegura que se guarde como string con 2 decimales
+                    stock: stockValue.toFixed(2),
                     hex: newItem.hex || '#000000',
                     group: newItem.group.toUpperCase() || 'SIN GRUPO',
                     updatedAt: new Date().toISOString()
@@ -450,7 +460,6 @@
                                     />
                                 </div>
                             </div>
-                            {/* MODIFICADO: Stock no es obligatorio en el formulario de alta */}
                             <div className="md:col-span-4">
                                 <label className="block text-xs font-bold mb-1 text-green-700">STOCK INICIAL (KG)</label>
                                 <input type="number" step="0.01" placeholder="0.00 (Opcional)" className="w-full border-2 border-green-200 bg-green-50 p-2 rounded font-black text-xl text-green-800" value={newItem.stock} onChange={e => setNewItem({...newItem, stock: e.target.value})} />
@@ -463,10 +472,27 @@
                                 <label className="block text-xs font-bold mb-1">ESTIRAJE / TÍTULO</label>
                                 <input placeholder="Opcional" className="w-full border p-2 rounded" value={newItem.estiraje} onChange={e => setNewItem({...newItem, estiraje: e.target.value})} />
                             </div>
+                            
+                            {/* ============================================================= */}
+                            {/* MODIFICACIÓN: CAMPO PROVEEDOR CON AUTOCOMPLETADO (DATALIST) */}
+                            {/* ============================================================= */}
                             <div className="md:col-span-4">
                                 <label className="block text-xs font-bold mb-1">PROVEEDOR</label>
-                                <input placeholder="Nombre Proveedor" className="w-full border p-2 rounded uppercase" value={newItem.proveedor} onChange={e => setNewItem({...newItem, proveedor: e.target.value.toUpperCase()})} />
+                                <input 
+                                    list="suppliers" 
+                                    placeholder="Nombre Proveedor" 
+                                    className="w-full border p-2 rounded uppercase" 
+                                    value={newItem.proveedor} 
+                                    onChange={e => setNewItem({...newItem, proveedor: e.target.value.toUpperCase()})} 
+                                />
+                                <datalist id="suppliers">
+                                    {supplierOptions.map(supplier => (
+                                        <option key={supplier} value={supplier} />
+                                    ))}
+                                </datalist>
                             </div>
+                            {/* ============================================================= */}
+
                         </div>
                         <div className="flex gap-2 justify-end">
                             {isEditing && <button onClick={() => { setIsEditing(null); setNewItem({ material: '', color: '', hex: '#000000', calibre: '', estiraje: '', stock: '', proveedor: '', group: '' }); }} className="bg-slate-500 text-white px-4 py-2 rounded font-bold">CANCELAR</button>}
@@ -520,7 +546,6 @@
                                                     <td className="p-4">
                                                         <div className="font-bold text-lg text-slate-800">{item.material}</div>
                                                         <div className="flex flex-col gap-1 mt-2">
-                                                            {/* RECUADRO DE COLOR GRANDE Y PEGADO (no rounded) - MODIFICADO AQUÍ */}
                                                             <div 
                                                                 className="w-full h-8 shadow-sm border border-slate-300 shrink-0" 
                                                                 style={{ backgroundColor: item.hex || '#eee' }}
